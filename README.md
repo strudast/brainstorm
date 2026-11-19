@@ -1,5 +1,7 @@
 # ⚡ Brainstorm
 
+**▶ Play it live: https://strudast.github.io/brainstorm/**
+
 **Guess the weather anywhere on Earth.** A gamified take on weather exploration: the map shows a handful of "TV forecast" cities as clues, you click anywhere else in the world, guess the temperature and the sky, then reveal the real conditions and score points. Every place you discover becomes part of *your world* — your own picture of the planet's weather, ranked hottest to coldest.
 
 > Work in progress — this is the first playable version.
