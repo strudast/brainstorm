@@ -240,3 +240,12 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.01em; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---------- small screens: keep the HUD on one line ---------- */
+.hud-stats > span, .hud-stats .ghost { white-space: nowrap; }
+@media (max-width: 480px) {
+  .hud { padding: 0.5rem 0.75rem; }
+  .brand h1 { font-size: 1.2rem; }
+  .hud-stats { gap: 0.6rem; font-size: 0.9rem; }
+  .hud-stats .ghost { padding: 0.35rem 0.6rem; }
+}

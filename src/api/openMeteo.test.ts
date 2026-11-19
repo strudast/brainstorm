@@ -104,3 +104,16 @@ describe('searchPlaces', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('pruneCache', () => {
+  it('removes expired forecast entries only', async () => {
+    const { pruneCache } = await import('./openMeteo');
+    localStorage.setItem('brainstorm:wx:old', JSON.stringify({ fetchedAt: Date.now() - 60 * 60 * 1000 }));
+    localStorage.setItem('brainstorm:wx:new', JSON.stringify({ fetchedAt: Date.now() }));
+    localStorage.setItem('brainstorm:game', '{}');
+    pruneCache();
+    expect(localStorage.getItem('brainstorm:wx:old')).toBeNull();
+    expect(localStorage.getItem('brainstorm:wx:new')).not.toBeNull();
+    expect(localStorage.getItem('brainstorm:game')).toBe('{}');
+  });
+});

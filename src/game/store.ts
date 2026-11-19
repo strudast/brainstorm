@@ -74,7 +74,17 @@ export const useGame = create<GameState>()(
       recordDiscovery: (place, guess, actual) => {
         get().ensureDailyQuests();
         const s = get();
-        const near = nearest(place, OVERVIEW_CITIES);
+        // Anything whose weather you can already see counts as a clue: forecast cities,
+        // your own location and earlier discoveries (otherwise clicking next to a revealed
+        // place would be a free 100 points).
+        const known = [
+          ...OVERVIEW_CITIES,
+          ...(s.home ? [{ ...s.home, name: 'your location' }] : []),
+          ...Object.values(s.discoveries)
+            .filter((d) => d.place.id !== place.id)
+            .map((d) => d.place),
+        ];
+        const near = nearest(place, known);
         const breakdown = score(guess, actual, s.streak, near ? { name: near.item.name, km: near.km } : null);
         const discovery: Discovery = { place, guess, actual, points: breakdown.total, at: Date.now() };
 

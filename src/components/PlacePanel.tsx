@@ -240,7 +240,7 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
           {b.clue && (
             <tr>
               <td>
-                🧭 Close to a clue ({b.clue.name}, {Math.round(b.clue.km)} km)
+                🧭 Close to a known place ({b.clue.name}, {Math.round(b.clue.km)} km)
               </td>
               <td>×{b.clueFactor}</td>
             </tr>
@@ -258,7 +258,7 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
         </tbody>
       </table>
       {!b.good && <p className="muted small">Streak reset — score 60+ to keep it going.</p>}
-      {b.clue && <p className="muted small">Go further from the forecast cities for full points.</p>}
+      {b.clue && <p className="muted small">Go further from places whose weather you already know for full points.</p>}
 
       <WeatherDetails weather={weather} />
     </div>

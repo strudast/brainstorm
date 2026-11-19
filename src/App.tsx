@@ -34,7 +34,17 @@ export default function App() {
   const [gridLoading, setGridLoading] = useState(false);
   const compareCount = useGame((s) => s.compare.length);
 
-  useEffect(() => ensureDailyQuests(), [ensureDailyQuests]);
+  // New quests at midnight, even if the tab stays open.
+  useEffect(() => {
+    ensureDailyQuests();
+    const onVisible = () => document.visibilityState === 'visible' && ensureDailyQuests();
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(ensureDailyQuests, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+  }, [ensureDailyQuests]);
 
   // The "TV forecast" overview: all cities in a single request.
   useEffect(() => {
@@ -145,7 +155,7 @@ export default function App() {
                   <section className="card intro">
                     <h2>How to play</h2>
                     <ol>
-                      <li>The glowing chips are forecast cities — your clues.</li>
+                      <li>The small weather chips are forecast cities — your clues.</li>
                       <li>Click anywhere on the map (or search a place).</li>
                       <li>Guess the temperature and the sky, then reveal.</li>
                       <li>Close guesses score big. Keep a streak for multipliers.</li>

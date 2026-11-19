@@ -40,7 +40,12 @@ export function SearchBar({ onChoose }: { onChoose: (g: GeoResult) => void }) {
   };
 
   return (
-    <div className="search">
+    <div
+      className="search"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}

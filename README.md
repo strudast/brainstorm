@@ -20,7 +20,7 @@
 - **Daily quests** — 3 per day, the same for everyone on a given date (e.g. *find somewhere below freezing*, *find two places 30 °C apart*).
 - **Badges** — permanent achievements (*Fire & Ice*, *Full Deck*, *Night Owl*, …).
 - **No pressure to play** — every place has *Just show me the weather*: no guess, no points, the place still joins your world.
-- **Clue penalty** — guessing right next to a forecast city is easy, so points scale down within 800 km of one.
+- **Clue penalty** — guessing right next to a place whose weather you can already see (a forecast city, your location or an earlier discovery) is easy, so points scale down within 800 km of one.
 - **Temperature layer** — a TV-style heat map of the whole planet, from a single request, loaded only when switched on.
 - **Compare** — put 2–3 places side by side: current conditions, a one-line insight ("Cairo is 27 °C warmer than Reykjavik") and a 7-day high/low chart.
 - **Random spot** — jump somewhere unexpected (keyboard-friendly way to play, too).

@@ -60,3 +60,20 @@ describe('game store', () => {
     expect(Object.keys(saved.state.discoveries)).toEqual(['a']);
   });
 });
+
+describe('anti-farming', () => {
+  it('penalises guessing right next to a place you already discovered', () => {
+    const { recordDiscovery, recordPeek } = useGame.getState();
+    recordPeek(place('seen', 0, -150), actual);
+    const o = recordDiscovery(place('next-door', 0.01, -150.01), { temp: 20, cat: 'clear' }, actual);
+    expect(o.breakdown.clue?.name).toBe('seen');
+    expect(o.breakdown.clueFactor).toBe(0.25);
+  });
+
+  it('penalises guessing next to your own location', () => {
+    const { setHome, recordDiscovery } = useGame.getState();
+    setHome({ id: 'home', name: 'My weather', lat: 0, lon: -150 });
+    const o = recordDiscovery(place('nearby', 0.05, -150), { temp: 20, cat: 'clear' }, actual);
+    expect(o.breakdown.clue?.name).toBe('your location');
+  });
+});

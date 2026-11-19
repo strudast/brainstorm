@@ -68,6 +68,21 @@ export interface GeoResult {
 /* ---------------- cache helpers ---------------- */
 
 const memCache = new Map<string, Weather>();
+
+/** Drop expired forecast entries once per page load so localStorage doesn't grow forever. */
+export function pruneCache() {
+  try {
+    const now = Date.now();
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(LS_PREFIX)) continue;
+      const fetchedAt = (JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<Weather>).fetchedAt ?? 0;
+      if (now - fetchedAt >= TTL_MS) localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}
 const inFlight = new Map<string, Promise<Weather>>();
 
 export const cellKey = (lat: number, lon: number) => `${lat.toFixed(1)},${lon.toFixed(1)}`;
