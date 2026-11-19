@@ -40,7 +40,7 @@ Other scripts: `npm run build` (type-check + production build), `npm run preview
 | | |
 |---|---|
 | **React 19 + TypeScript + Vite** | Fast dev loop, strict types for API data and game rules. |
-| **Leaflet + react-leaflet** | Free, no API key, lightweight. CARTO dark tiles over OpenStreetMap data. |
+| **Leaflet + react-leaflet** | Free, no API key, lightweight. Standard OpenStreetMap tiles, darkened with a CSS filter to fit the theme. |
 | **Zustand** (+ `persist`) | Tiny global store for game state, persisted to localStorage with no boilerplate. |
 | **Plain CSS** | No UI kit — one stylesheet with CSS variables keeps the look custom and the bundle small. |
 
@@ -78,5 +78,5 @@ src/
 
 ## 5. Additional notes
 
-- Weather data: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0). Map data © OpenStreetMap contributors, tiles © CARTO.
+- Weather data: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0). Map data and tiles © OpenStreetMap contributors.
 - AI tools were used to help build this project.
