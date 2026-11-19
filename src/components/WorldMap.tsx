@@ -5,6 +5,7 @@ import type { TempGrid, Weather } from '../api/openMeteo';
 import { TempLayer } from './TempLayer';
 import type { Discovery, Place } from '../game/rules';
 import { emojiFor } from '../lib/weatherCodes';
+import { haversineKm } from '../game/rules';
 
 interface Props {
   overview: { place: Place; weather: Weather | null }[];
@@ -61,7 +62,8 @@ export function WorldMap({ overview, discoveries, home, selected, tempGrid, onPi
       <FlyTo target={selected} />
 
       {overview.map(({ place, weather }) =>
-        weather ? (
+        // Hide a forecast city sitting under your own location marker (e.g. you're in Athens).
+        weather && !(home && haversineKm(home.place, place) < 50) ? (
           <Marker
             key={place.id}
             position={[place.lat, place.lon]}
