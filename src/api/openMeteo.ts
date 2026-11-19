@@ -217,3 +217,52 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
   geoCache.set(q, results);
   return results;
 }
+
+/* ---------------- global temperature grid (map layer) ---------------- */
+
+export const GRID = {
+  lats: Array.from({ length: 10 }, (_, i) => -60 + i * 15), // -60 … 75
+  lons: Array.from({ length: 18 }, (_, j) => -180 + j * 20), // -180 … 160 (wraps)
+};
+const GRID_KEY = 'brainstorm:grid';
+const GRID_TTL_MS = 30 * 60 * 1000;
+
+export interface TempGrid {
+  temps: number[][]; // [latIndex][lonIndex]
+  fetchedAt: number;
+}
+
+/**
+ * 180 points in ONE request, current temperature only, cached 30 min.
+ * Note: Open-Meteo counts each location towards the daily quota, so this is only
+ * fetched when the player switches the layer on.
+ */
+export async function getTemperatureGrid(): Promise<TempGrid> {
+  try {
+    const raw = localStorage.getItem(GRID_KEY);
+    if (raw) {
+      const g = JSON.parse(raw) as TempGrid;
+      if (Date.now() - g.fetchedAt < GRID_TTL_MS) return g;
+    }
+  } catch {
+    /* ignore */
+  }
+  const lats: number[] = [];
+  const lons: number[] = [];
+  GRID.lats.forEach((la) => GRID.lons.forEach((lo) => (lats.push(la), lons.push(lo))));
+  const p = new URLSearchParams({
+    latitude: lats.join(','),
+    longitude: lons.join(','),
+    current: 'temperature_2m',
+  });
+  const body = await fetchJson<{ current: { temperature_2m: number } }[]>(`${FORECAST_URL}?${p}`);
+  const flat = body.map((b) => b.current.temperature_2m);
+  const temps = GRID.lats.map((_, i) => flat.slice(i * GRID.lons.length, (i + 1) * GRID.lons.length));
+  const grid = { temps, fetchedAt: Date.now() };
+  try {
+    localStorage.setItem(GRID_KEY, JSON.stringify(grid));
+  } catch {
+    /* ignore */
+  }
+  return grid;
+}

@@ -3,7 +3,7 @@ import { getWeather } from '../api/openMeteo';
 import type { Weather } from '../api/openMeteo';
 import type { Discovery, Place } from '../game/rules';
 import { ACHIEVEMENTS, QUESTS } from '../game/rules';
-import { useGame, useToasts } from '../game/store';
+import { MAX_COMPARE, useGame, useToasts } from '../game/store';
 import type { Outcome } from '../game/store';
 import { CATEGORIES, categoryMeta, categoryOf, describe, emojiFor } from '../lib/weatherCodes';
 import type { Category } from '../lib/weatherCodes';
@@ -11,12 +11,14 @@ import { isHome, isOverview, localTime, subtitle } from '../lib/places';
 import { useCountUp } from '../lib/useCountUp';
 
 /**
- * - New place  → guess temperature + condition, then reveal and score.
- * - Overview city / your location / already discovered → just show the weather.
+ * - New place  → guess temperature + sky, then reveal and score (or "Just show me").
+ * - Forecast city / your location / already discovered → just show the weather.
  */
-export function PlacePanel({ place, onClose }: { place: Place; onClose: () => void }) {
+export function PlacePanel({ place, onClose, onCompare }: { place: Place; onClose: () => void; onCompare: () => void }) {
   const discovery = useGame((s) => s.discoveries[place.id]);
-  const known = isOverview(place) || isHome(place) || !!discovery;
+  // Decide the mode once, on open: recording a discovery mid-flow must not swap out the reveal screen.
+  const [startedKnown] = useState(() => isOverview(place) || isHome(place) || !!discovery);
+  const canCompare = startedKnown || !!discovery;
 
   return (
     <section className="card place">
@@ -28,12 +30,31 @@ export function PlacePanel({ place, onClose }: { place: Place; onClose: () => vo
           </h2>
           <p className="muted">{isHome(place) ? 'Your current location' : subtitle(place)}</p>
         </div>
-        <button className="icon-btn" onClick={onClose} aria-label="Close">
+        <button className="icon-btn" onClick={onClose} aria-label="Close place">
           ✕
         </button>
       </header>
-      {known ? <KnownWeather place={place} discovery={discovery} /> : <GuessFlow place={place} />}
+      {startedKnown ? <KnownWeather place={place} discovery={discovery} /> : <GuessFlow place={place} />}
+      {canCompare && <CompareButton place={place} onCompare={onCompare} />}
     </section>
+  );
+}
+
+function CompareButton({ place, onCompare }: { place: Place; onCompare: () => void }) {
+  const compare = useGame((s) => s.compare);
+  const toggle = useGame((s) => s.toggleCompare);
+  const inList = compare.some((p) => p.id === place.id);
+  return (
+    <div className="compare-row">
+      <button className="ghost" onClick={() => toggle(place)}>
+        {inList ? '✓ In comparison' : `⚖️ Add to compare${compare.length >= MAX_COMPARE ? ' (replaces oldest)' : ''}`}
+      </button>
+      {compare.length >= 2 && (
+        <button className="link" onClick={onCompare}>
+          View comparison ({compare.length}) →
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -58,15 +79,16 @@ function KnownWeather({ place, discovery }: { place: Place; discovery?: Discover
   const { weather, error } = useWeather(place);
   return (
     <>
-      {discovery && (
+      {discovery?.guess && (
         <div className="discovered-note">
           🏅 Discovered — you guessed <b>{discovery.guess.temp}°</b> {categoryMeta(discovery.guess.cat).emoji}, it was{' '}
           <b>{Math.round(discovery.actual.temp)}°</b> {categoryMeta(discovery.actual.cat).emoji} · <b>{discovery.points} pts</b>
         </div>
       )}
+      {discovery && !discovery.guess && <div className="discovered-note peek">👀 Explored without guessing — no points.</div>}
       {isOverview(place) && <p className="hint">Forecast city — use these to read the map, then go find places nobody's shown you.</p>}
       {error && <p className="error">{error}</p>}
-      {!weather && !error && <p className="muted">Loading weather…</p>}
+      {!weather && !error && <WeatherSkeleton />}
       {weather && <WeatherDetails weather={weather} />}
     </>
   );
@@ -74,31 +96,41 @@ function KnownWeather({ place, discovery }: { place: Place; discovery?: Discover
 
 /* ---------------- the guessing game ---------------- */
 
+type Phase = 'guess' | 'loading' | 'revealed' | 'peeked' | 'error';
+
 function GuessFlow({ place }: { place: Place }) {
   const record = useGame((s) => s.recordDiscovery);
+  const recordPeek = useGame((s) => s.recordPeek);
   const pushToast = useToasts((s) => s.push);
   const [temp, setTemp] = useState(15);
   const [cat, setCat] = useState<Category | null>(null);
-  const [state, setState] = useState<'guess' | 'loading' | 'revealed' | 'error'>('guess');
+  const [phase, setPhase] = useState<Phase>('guess');
   const [weather, setWeather] = useState<Weather | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [error, setError] = useState('');
 
-  const reveal = async () => {
-    if (!cat) return;
-    setState('loading');
+  const actualFrom = (w: Weather): Discovery['actual'] => ({
+    temp: w.current.temperature,
+    code: w.current.code,
+    cat: categoryOf(w.current.code),
+    isDay: w.current.isDay,
+    wind: w.current.wind,
+  });
+
+  // Weather is fetched only on reveal/peek: no request is spent on places the player just clicks past.
+  const load = async (mode: 'guess' | 'peek') => {
+    setPhase('loading');
     try {
-      // Fetched only on reveal: no request is spent on places the player just clicks past.
       const w = await getWeather(place.lat, place.lon);
-      const c = w.current;
-      const o = record(
-        place,
-        { temp, cat },
-        { temp: c.temperature, code: c.code, cat: categoryOf(c.code), isDay: c.isDay, wind: c.wind },
-      );
       setWeather(w);
+      if (mode === 'peek') {
+        recordPeek(place, actualFrom(w));
+        setPhase('peeked');
+        return;
+      }
+      const o = record(place, { temp, cat: cat! }, actualFrom(w));
       setOutcome(o);
-      setState('revealed');
+      setPhase('revealed');
 
       o.completedQuests.forEach((id) => {
         const q = QUESTS.find((x) => x.id === id)!;
@@ -111,13 +143,13 @@ function GuessFlow({ place }: { place: Place }) {
       if (o.levelUp) pushToast({ emoji: '⚡', title: `Level ${o.levelUp}!`, body: 'Your storm is growing.' });
     } catch (e) {
       setError((e as Error).message);
-      setState('error');
+      setPhase('error');
     }
   };
 
-  if (state === 'revealed' && weather && outcome) {
-    return <Reveal guess={{ temp, cat: cat! }} weather={weather} outcome={outcome} />;
-  }
+  if (phase === 'revealed' && weather && outcome) return <Reveal guess={{ temp, cat: cat! }} weather={weather} outcome={outcome} />;
+  if (phase === 'peeked' && weather) return <WeatherDetails weather={weather} />;
+  if (phase === 'loading') return <WeatherSkeleton />;
 
   return (
     <div className="guess">
@@ -135,22 +167,33 @@ function GuessFlow({ place }: { place: Place }) {
         value={temp}
         onChange={(e) => setTemp(Number(e.target.value))}
         className="temp-slider"
-        style={{ '--pct': `${((temp + 40) / 90) * 100}%` } as React.CSSProperties}
+        aria-valuetext={`${temp} degrees Celsius`}
       />
 
-      <span className="field-label">Sky</span>
-      <div className="cat-grid">
+      <span className="field-label" id="sky-label">
+        Sky
+      </span>
+      <div className="cat-grid" role="radiogroup" aria-labelledby="sky-label">
         {CATEGORIES.map((c) => (
-          <button key={c.id} className={`cat-btn ${cat === c.id ? 'active' : ''}`} onClick={() => setCat(c.id)}>
-            <span>{c.emoji}</span>
+          <button
+            key={c.id}
+            role="radio"
+            aria-checked={cat === c.id}
+            className={`cat-btn ${cat === c.id ? 'active' : ''}`}
+            onClick={() => setCat(c.id)}
+          >
+            <span aria-hidden>{c.emoji}</span>
             {c.label}
           </button>
         ))}
       </div>
 
-      {state === 'error' && <p className="error">{error}</p>}
-      <button className="primary" disabled={!cat || state === 'loading'} onClick={reveal}>
-        {state === 'loading' ? 'Reading the sky…' : cat ? 'Reveal ⚡' : 'Pick a sky to reveal'}
+      {phase === 'error' && <p className="error">{error}</p>}
+      <button className="primary" disabled={!cat} onClick={() => load('guess')}>
+        {cat ? 'Reveal ⚡' : 'Pick a sky to reveal'}
+      </button>
+      <button className="skip" onClick={() => load('peek')}>
+        Just show me the weather <span className="muted">(no points)</span>
       </button>
     </div>
   );
@@ -166,8 +209,10 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
 
   return (
     <div className="reveal">
-      <div className="reveal-hero">
-        <span className="reveal-emoji">{emojiFor(weather.current.code, weather.current.isDay)}</span>
+      <div className="reveal-hero" aria-live="polite">
+        <span className="reveal-emoji" aria-hidden>
+          {emojiFor(weather.current.code, weather.current.isDay)}
+        </span>
         <span className="reveal-temp">{shownTemp.toFixed(0)}°</span>
       </div>
       <p className="reveal-verdict">{verdict}</p>
@@ -192,6 +237,14 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
               <td>×{b.multiplier}</td>
             </tr>
           )}
+          {b.clue && (
+            <tr>
+              <td>
+                🧭 Close to a clue ({b.clue.name}, {Math.round(b.clue.km)} km)
+              </td>
+              <td>×{b.clueFactor}</td>
+            </tr>
+          )}
           {outcome.questXp > 0 && (
             <tr>
               <td>📜 Quest bonus</td>
@@ -205,6 +258,7 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
         </tbody>
       </table>
       {!b.good && <p className="muted small">Streak reset — score 60+ to keep it going.</p>}
+      {b.clue && <p className="muted small">Go further from the forecast cities for full points.</p>}
 
       <WeatherDetails weather={weather} />
     </div>
@@ -215,13 +269,25 @@ function Reveal({ guess, weather, outcome }: { guess: { temp: number; cat: Categ
 
 const weekday = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en', { weekday: 'short' });
 
+function WeatherSkeleton() {
+  return (
+    <div className="skeleton-wrap" aria-busy="true" aria-label="Loading weather">
+      <div className="skeleton" style={{ height: 56, width: '55%' }} />
+      <div className="skeleton" style={{ height: 48 }} />
+      <div className="skeleton" style={{ height: 64 }} />
+    </div>
+  );
+}
+
 function WeatherDetails({ weather }: { weather: Weather }) {
   const c = weather.current;
   return (
     <>
       <div className="now">
         <div className="now-main">
-          <span className="now-emoji">{emojiFor(c.code, c.isDay)}</span>
+          <span className="now-emoji" aria-hidden>
+            {emojiFor(c.code, c.isDay)}
+          </span>
           <div>
             <div className="now-temp">{Math.round(c.temperature)}°C</div>
             <div className="muted">{describe(c.code)}</div>
@@ -248,11 +314,11 @@ function WeatherDetails({ weather }: { weather: Weather }) {
           </div>
         </dl>
       </div>
-      <ol className="week">
+      <ol className="week" aria-label="7-day forecast">
         {weather.daily.map((d, i) => (
           <li key={d.date}>
             <span className="muted">{i === 0 ? 'Today' : weekday(d.date)}</span>
-            <span className="week-emoji" title={describe(d.code)}>
+            <span className="week-emoji" title={describe(d.code)} aria-label={describe(d.code)}>
               {emojiFor(d.code)}
             </span>
             <b>{Math.round(d.max)}°</b>

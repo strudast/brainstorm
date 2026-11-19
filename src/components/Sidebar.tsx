@@ -2,6 +2,7 @@ import type { Place } from '../game/rules';
 import { ACHIEVEMENTS, QUESTS } from '../game/rules';
 import { useGame } from '../game/store';
 import { categoryMeta, emojiFor } from '../lib/weatherCodes';
+import { tempColor } from '../lib/tempColor';
 
 export function Quests() {
   const quests = useGame((s) => s.quests);
@@ -92,10 +93,4 @@ export function Badges() {
       </ul>
     </section>
   );
-}
-
-export function tempColor(t: number) {
-  // −20°C (blue) → 40°C (red)
-  const x = Math.min(1, Math.max(0, (t + 20) / 60));
-  return `hsl(${220 - x * 220} 80% 58%)`;
 }

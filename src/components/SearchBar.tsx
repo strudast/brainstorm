@@ -4,15 +4,12 @@ import type { GeoResult } from '../api/openMeteo';
 
 export function SearchBar({ onChoose }: { onChoose: (g: GeoResult) => void }) {
   const [q, setQ] = useState('');
-  const [results, setResults] = useState<GeoResult[]>([]);
+  const [found, setResults] = useState<GeoResult[]>([]);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (q.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+    if (q.trim().length < 2) return;
     const ctrl = new AbortController();
     // Debounce to stay well within the free API limits.
     const t = setTimeout(() => {
@@ -31,6 +28,9 @@ export function SearchBar({ onChoose }: { onChoose: (g: GeoResult) => void }) {
       ctrl.abort();
     };
   }, [q]);
+
+  // Short queries never hit the API; stale results are simply not shown.
+  const results = q.trim().length >= 2 ? found : [];
 
   const choose = (g: GeoResult) => {
     onChoose(g);

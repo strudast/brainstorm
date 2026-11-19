@@ -14,7 +14,8 @@ export interface Place {
 
 export interface Discovery {
   place: Place;
-  guess: { temp: number; cat: Category };
+  /** null when the player chose "Just show me" instead of guessing. */
+  guess: { temp: number; cat: Category } | null;
   actual: { temp: number; code: number; cat: Category; isDay: boolean; wind: number };
   points: number;
   at: number; // epoch ms
@@ -22,12 +23,19 @@ export interface Discovery {
 
 /* ---------------- scoring ---------------- */
 
+export interface Clue {
+  name: string;
+  km: number;
+}
+
 export interface ScoreBreakdown {
   diff: number;
   tempPts: number;
   catPts: number;
   base: number;
   multiplier: number;
+  clue: Clue | null;
+  clueFactor: number;
   total: number;
   good: boolean;
   streak: number;
@@ -37,8 +45,14 @@ export interface ScoreBreakdown {
  * Temperature: 60 pts for a perfect guess, minus 6 per degree off (0 at 10° off).
  * Condition: 40 pts if the category matches.
  * A "good" guess (>= 60 base) keeps the streak alive; every streak step adds +25%, capped at 2x.
+ * Guessing right next to a visible forecast city is easy, so points shrink within 800 km of one.
  */
-export function score(guess: { temp: number; cat: Category }, actual: { temp: number; cat: Category }, prevStreak: number): ScoreBreakdown {
+export function score(
+  guess: { temp: number; cat: Category },
+  actual: { temp: number; cat: Category },
+  prevStreak: number,
+  clue: Clue | null = null,
+): ScoreBreakdown {
   const diff = Math.abs(guess.temp - actual.temp);
   const tempPts = Math.max(0, Math.round(60 - 6 * diff));
   const catPts = guess.cat === actual.cat ? 40 : 0;
@@ -46,7 +60,46 @@ export function score(guess: { temp: number; cat: Category }, actual: { temp: nu
   const good = base >= 60;
   const streak = good ? prevStreak + 1 : 0;
   const multiplier = good ? 1 + Math.min(streak - 1, 4) * 0.25 : 1;
-  return { diff, tempPts, catPts, base, multiplier, total: Math.round(base * multiplier), good, streak };
+  const factor = clue ? clueFactor(clue.km) : 1;
+  return {
+    diff,
+    tempPts,
+    catPts,
+    base,
+    multiplier,
+    clue: factor < 1 ? clue : null,
+    clueFactor: factor,
+    total: Math.round(base * multiplier * factor),
+    good,
+    streak,
+  };
+}
+
+export const CLUE_RADIUS_KM = 800;
+
+/** 1 beyond 800 km, scaling down linearly to a floor of 0.25 (in steps of 0.05). */
+export function clueFactor(km: number) {
+  if (km >= CLUE_RADIUS_KM) return 1;
+  return Math.max(0.25, Math.round((km / CLUE_RADIUS_KM) * 20) / 20);
+}
+
+/** Great-circle distance in km. */
+export function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+export function nearest<T extends { lat: number; lon: number }>(from: { lat: number; lon: number }, list: T[]) {
+  let best: { item: T; km: number } | null = null;
+  for (const item of list) {
+    const km = haversineKm(from, item);
+    if (!best || km < best.km) best = { item, km };
+  }
+  return best;
 }
 
 /* ---------------- levels ---------------- */
@@ -87,7 +140,7 @@ export const QUESTS: QuestDef[] = [
   { id: 'night', emoji: '🌙', title: 'Visit a place where it is night', xp: 50, check: (d) => !d.actual.isDay },
   { id: 'windy', emoji: '💨', title: 'Find wind of 30 km/h or more', xp: 100, check: (d) => d.actual.wind >= 30 },
   { id: 'south', emoji: '🧭', title: 'Explore the southern hemisphere', xp: 50, check: (d) => d.place.lat < 0 },
-  { id: 'sharp', emoji: '🎯', title: 'Guess a temperature within 1°C', xp: 100, check: (d) => Math.abs(d.guess.temp - d.actual.temp) <= 1 },
+  { id: 'sharp', emoji: '🎯', title: 'Guess a temperature within 1°C', xp: 100, check: (d) => !!d.guess && Math.abs(d.guess.temp - d.actual.temp) <= 1 },
   {
     id: 'swing',
     emoji: '🎢',
@@ -138,7 +191,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     emoji: '🎯',
     title: 'Bullseye',
     description: 'Guess the exact temperature (within 0.5°C)',
-    check: (_a, d) => Math.abs(d.guess.temp - d.actual.temp) < 0.5,
+    check: (_a, d) => !!d.guess && Math.abs(d.guess.temp - d.actual.temp) < 0.5,
   },
   {
     id: 'hemispheres',

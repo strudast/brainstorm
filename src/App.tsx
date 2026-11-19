@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getCachedWeather, getWeather, getWeatherMany } from './api/openMeteo';
-import type { GeoResult, Weather } from './api/openMeteo';
+import { getCachedWeather, getTemperatureGrid, getWeather, getWeatherMany } from './api/openMeteo';
+import type { GeoResult, TempGrid, Weather } from './api/openMeteo';
+import { Compare } from './components/Compare';
+import { TempLegend } from './components/TempLayer';
 import { Hud, Toasts } from './components/Hud';
 import { PlacePanel } from './components/PlacePanel';
 import { SearchBar } from './components/SearchBar';
@@ -10,7 +12,7 @@ import type { Place } from './game/rules';
 import { useGame, useToasts } from './game/store';
 import { OVERVIEW_CITIES, placeFromGeo, placeFromPoint } from './lib/places';
 
-type Tab = 'explore' | 'world' | 'badges';
+type Tab = 'explore' | 'compare' | 'world' | 'badges';
 
 export default function App() {
   const ensureDailyQuests = useGame((s) => s.ensureDailyQuests);
@@ -27,6 +29,10 @@ export default function App() {
   const [selected, setSelected] = useState<Place | null>(null);
   const [tab, setTab] = useState<Tab>('explore');
   const [locating, setLocating] = useState(false);
+  const [tempGrid, setTempGrid] = useState<TempGrid | null>(null);
+  const [showTemps, setShowTemps] = useState(false);
+  const [gridLoading, setGridLoading] = useState(false);
+  const compareCount = useGame((s) => s.compare.length);
 
   useEffect(() => ensureDailyQuests(), [ensureDailyQuests]);
 
@@ -45,6 +51,26 @@ export default function App() {
     setSelected(p);
     setTab('explore');
   }, []);
+
+  // Lazy: the 180-point grid is only requested when the player turns the layer on.
+  const toggleTemps = () => {
+    if (showTemps) return setShowTemps(false);
+    if (tempGrid) return setShowTemps(true);
+    setGridLoading(true);
+    getTemperatureGrid()
+      .then((g) => {
+        setTempGrid(g);
+        setShowTemps(true);
+      })
+      .catch((e: Error) => pushToast({ emoji: '🌡️', title: 'Temperature layer unavailable', body: e.message }))
+      .finally(() => setGridLoading(false));
+  };
+
+  const randomSpot = () => {
+    const lat = -55 + Math.random() * 125;
+    const lon = -180 + Math.random() * 360;
+    select(placeFromPoint(lat, lon));
+  };
 
   const locate = () => {
     if (!navigator.geolocation) {
@@ -77,9 +103,19 @@ export default function App() {
             discoveries={Object.values(discoveries)}
             home={home ? { place: home, weather: homeWeather } : null}
             selected={selected}
+            tempGrid={showTemps ? tempGrid : null}
             onPick={(lat, lon) => select(placeFromPoint(lat, lon))}
             onSelect={select}
           />
+          <div className="map-controls">
+            <button className={`map-btn ${showTemps ? 'on' : ''}`} onClick={toggleTemps} disabled={gridLoading} aria-pressed={showTemps}>
+              {gridLoading ? 'Loading…' : '🌡️ Temperature layer'}
+            </button>
+            <button className="map-btn" onClick={randomSpot}>
+              🎲 Random spot
+            </button>
+            {showTemps && <TempLegend />}
+          </div>
           {overviewError && <div className="map-banner">Couldn't load the forecast cities: {overviewError}</div>}
         </div>
 
@@ -89,7 +125,8 @@ export default function App() {
             {(
               [
                 ['explore', '🔭 Explore'],
-                ['world', '🗺️ Your world'],
+                ['compare', `⚖️ Compare${compareCount ? ` · ${compareCount}` : ''}`],
+                ['world', '🗺️ World'],
                 ['badges', '🏅 Badges'],
               ] as [Tab, string][]
             ).map(([id, label]) => (
@@ -103,7 +140,7 @@ export default function App() {
             {tab === 'explore' && (
               <>
                 {selected ? (
-                  <PlacePanel key={selected.id} place={selected} onClose={() => setSelected(null)} />
+                  <PlacePanel key={selected.id} place={selected} onClose={() => setSelected(null)} onCompare={() => setTab('compare')} />
                 ) : (
                   <section className="card intro">
                     <h2>How to play</h2>
@@ -112,12 +149,14 @@ export default function App() {
                       <li>Click anywhere on the map (or search a place).</li>
                       <li>Guess the temperature and the sky, then reveal.</li>
                       <li>Close guesses score big. Keep a streak for multipliers.</li>
+                      <li>Just exploring? Every place has a “Just show me” option.</li>
                     </ol>
                   </section>
                 )}
                 <Quests />
               </>
             )}
+            {tab === 'compare' && <Compare onSelect={select} />}
             {tab === 'world' && <Collection onSelect={select} />}
             {tab === 'badges' && <Badges />}
           </div>

@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import L from 'leaflet';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
-import type { Weather } from '../api/openMeteo';
+import type { TempGrid, Weather } from '../api/openMeteo';
+import { TempLayer } from './TempLayer';
 import type { Discovery, Place } from '../game/rules';
 import { emojiFor } from '../lib/weatherCodes';
 
@@ -10,6 +11,7 @@ interface Props {
   discoveries: Discovery[];
   home: { place: Place; weather: Weather | null } | null;
   selected: Place | null;
+  tempGrid: TempGrid | null;
   onPick: (lat: number, lon: number) => void;
   onSelect: (p: Place) => void;
 }
@@ -41,7 +43,7 @@ function FlyTo({ target }: { target: Place | null }) {
   return null;
 }
 
-export function WorldMap({ overview, discoveries, home, selected, onPick, onSelect }: Props) {
+export function WorldMap({ overview, discoveries, home, selected, tempGrid, onPick, onSelect }: Props) {
   const discoveredIds = new Set(discoveries.map((d) => d.place.id));
   const showMystery = selected && !discoveredIds.has(selected.id) && !selected.id.startsWith('overview:') && selected.id !== 'home';
 
@@ -54,6 +56,7 @@ export function WorldMap({ overview, discoveries, home, selected, onPick, onSele
         maxZoom={19}
         className="dark-tiles"
       />
+      {tempGrid && <TempLayer grid={tempGrid} />}
       <ClickHandler onPick={onPick} />
       <FlyTo target={selected} />
 

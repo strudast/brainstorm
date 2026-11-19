@@ -17,6 +17,11 @@
 - **Levels** — XP levels you up from *Light Breeze* to *Brainstorm*.
 - **Daily quests** — 3 per day, the same for everyone on a given date (e.g. *find somewhere below freezing*, *find two places 30 °C apart*).
 - **Badges** — permanent achievements (*Fire & Ice*, *Full Deck*, *Night Owl*, …).
+- **No pressure to play** — every place has *Just show me the weather*: no guess, no points, the place still joins your world.
+- **Clue penalty** — guessing right next to a forecast city is easy, so points scale down within 800 km of one.
+- **Temperature layer** — a TV-style heat map of the whole planet, from a single request, loaded only when switched on.
+- **Compare** — put 2–3 places side by side: current conditions, a one-line insight ("Cairo is 27 °C warmer than Reykjavik") and a 7-day high/low chart.
+- **Random spot** — jump somewhere unexpected (keyboard-friendly way to play, too).
 - **My weather** — one click shows the weather where you are (browser geolocation).
 - **Your world** — every discovery, sorted hottest → coldest with a temperature bar.
 
@@ -33,7 +38,9 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Other scripts: `npm run build` (type-check + production build), `npm run preview`, `npm run lint`.
+Other scripts: `npm test` (Vitest), `npm run build` (type-check + production build), `npm run preview`, `npm run lint`.
+
+**Deployment:** every push to `main` runs the tests, builds and deploys to GitHub Pages (`.github/workflows/deploy.yml`).
 
 **Environment variables:** none. Open-Meteo's free API needs no key.
 
@@ -45,13 +52,16 @@ Other scripts: `npm run build` (type-check + production build), `npm run preview
 | **Leaflet + react-leaflet** | Free, no API key, lightweight. Standard OpenStreetMap tiles, darkened with a CSS filter to fit the theme. |
 | **Zustand** (+ `persist`) | Tiny global store for game state, persisted to localStorage with no boilerplate. |
 | **Plain CSS** | No UI kit — one stylesheet with CSS variables keeps the look custom and the bundle small. |
+| **Hand-rolled SVG chart & canvas heat map** | Two small, specific visuals didn't justify a charting library. |
+| **Vitest + jsdom** | Same config as Vite; tests for game rules, the store and the API client/cache. |
 
 **Being mindful of the API limits**
 
 - The 20 overview cities load in **one** multi-location forecast request.
 - Forecasts are **cached for 15 minutes** per ~11 km cell (coordinates rounded to 0.1°), in memory and in localStorage, so reloads and revisits are free.
 - Identical in-flight requests are **de-duplicated**.
-- A new place's weather is fetched **only when you press Reveal**, not when you click around.
+- A new place's weather is fetched **only when you press Reveal** (or *Just show me*), not when you click around.
+- The temperature layer (180 grid points) is the most expensive call — Open-Meteo counts each location — so it is **opt-in** and cached for 30 minutes.
 - Place search is **debounced** (350 ms), needs 2+ characters, cancels stale requests and caches results.
 
 **Code layout**
@@ -59,26 +69,37 @@ Other scripts: `npm run build` (type-check + production build), `npm run preview
 ```
 src/
   api/openMeteo.ts      forecast + geocoding client, caching
-  game/rules.ts         scoring, levels, quests, achievements (pure functions)
+  game/rules.ts         scoring, levels, quests, achievements, distances (pure functions)
   game/store.ts         persisted game state + toasts
   lib/                  weather-code mapping, places, helpers
-  components/           map, search, place panel (guess → reveal), sidebar, HUD
+  components/           map, temperature layer, search, place panel (guess → reveal),
+                        compare, sidebar, HUD
+  **/*.test.ts          Vitest specs
 ```
 
 ## 3. Incomplete requirements
 
-- Map clicks are named by coordinates (plus time zone): Open-Meteo has no reverse geocoding.
-- No automated tests yet.
+- Map clicks are named by coordinates: Open-Meteo has no reverse geocoding.
+- The temperature layer is deliberately coarse (15° × 20° grid, interpolated) to keep it to one request; it does not follow the visible map area.
+- No component/E2E tests yet — the tests cover logic, state and the API layer.
 
 ## 4. Next steps
 
-- Unit tests for `game/rules.ts` (scoring, quest seeding, achievements) and the API cache.
-- "Compare" mode: pick two discoveries and see their 7-day forecasts side by side.
-- Weather layers on the map (temperature or precipitation overlay) for a true TV-forecast feel.
-- Accessibility pass (keyboard play on the map, reduced-motion support).
-- Shareable daily result ("Brainstorm #42 — 🎯🎯🔥 512 XP").
+- Viewport-aware temperature/precipitation layers (finer grid for the area on screen, rain overlay).
+- Component tests (React Testing Library) and a Playwright smoke test against a mocked API.
+- Place names for map clicks via a reverse-geocoding service.
+- Shareable daily result ("Brainstorm #42 — 🎯🎯🔥 512 XP") and a daily challenge everyone plays on the same spots.
+- Fuller keyboard support for placing a guess on the map itself.
+
+## Trade-offs
+
+- **Game vs. exploration.** Guessing first makes discovery memorable, but it can get in the way of someone who just wants the weather. *Just show me*, the always-visible forecast cities, your own location and the compare view keep plain exploration one click away.
+- **Clues vs. fairness.** Forecast cities are both the "TV overview" and hints. Instead of hiding them, points shrink near them, which nudges players towards less-known places.
+- **Requests vs. richness.** Every visual is built around the free-tier limits: batching, caching, fetching on demand and an opt-in global layer.
+- **No backend.** Progress lives in localStorage; nothing to deploy beyond static files, at the cost of no cross-device sync or leaderboards.
 
 ## 5. Additional notes
 
 - Weather data: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0). Map data and tiles © OpenStreetMap contributors.
+- Accessibility: keyboard focus styles, ARIA roles for the sky picker, `aria-live` reveal, and `prefers-reduced-motion` respected.
 - AI tools were used to help build this project.

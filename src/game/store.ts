@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Category } from '../lib/weatherCodes';
-import { ACHIEVEMENTS, QUESTS, levelFor, questsForDay, score, todayKey } from './rules';
+import { OVERVIEW_CITIES } from '../lib/places';
+import { ACHIEVEMENTS, QUESTS, levelFor, nearest, questsForDay, score, todayKey } from './rules';
 import type { Discovery, Place, ScoreBreakdown } from './rules';
 
 export interface Outcome {
@@ -26,6 +27,7 @@ interface GameState {
   achievements: string[];
   quests: DailyQuests;
   home: Place | null;
+  compare: Place[];
 
   ensureDailyQuests: () => void;
   setHome: (p: Place) => void;
@@ -34,6 +36,9 @@ interface GameState {
     guess: { temp: number; cat: Category },
     actual: Discovery['actual'],
   ) => Outcome;
+  /** "Just show me": the place joins your world, but with no points, quests or badges. */
+  recordPeek: (place: Place, actual: Discovery['actual']) => void;
+  toggleCompare: (place: Place) => void;
   reset: () => void;
 }
 
@@ -50,7 +55,10 @@ const initial = {
   achievements: [] as string[],
   quests: freshQuests(),
   home: null as Place | null,
+  compare: [] as Place[],
 };
+
+export const MAX_COMPARE = 3;
 
 export const useGame = create<GameState>()(
   persist(
@@ -66,11 +74,13 @@ export const useGame = create<GameState>()(
       recordDiscovery: (place, guess, actual) => {
         get().ensureDailyQuests();
         const s = get();
-        const breakdown = score(guess, actual, s.streak);
+        const near = nearest(place, OVERVIEW_CITIES);
+        const breakdown = score(guess, actual, s.streak, near ? { name: near.item.name, km: near.km } : null);
         const discovery: Discovery = { place, guess, actual, points: breakdown.total, at: Date.now() };
 
         const discoveries = { ...s.discoveries, [place.id]: discovery };
-        const all = Object.values(discoveries);
+        // Peeks don't count towards the game.
+        const all = Object.values(discoveries).filter((d) => d.guess);
         const today = all.filter((d) => todayKey(new Date(d.at)) === s.quests.date);
 
         const completedQuests = s.quests.ids.filter(
@@ -98,12 +108,24 @@ export const useGame = create<GameState>()(
         return { breakdown, questXp, completedQuests, newAchievements, levelUp: after > before ? after : null };
       },
 
+      recordPeek: (place, actual) =>
+        set((s) => ({
+          discoveries: { ...s.discoveries, [place.id]: { place, guess: null, actual, points: 0, at: Date.now() } },
+        })),
+
+      toggleCompare: (place) =>
+        set((s) =>
+          s.compare.some((p) => p.id === place.id)
+            ? { compare: s.compare.filter((p) => p.id !== place.id) }
+            : { compare: [...s.compare, place].slice(-MAX_COMPARE) },
+        ),
+
       reset: () => set({ ...initial, quests: freshQuests() }),
     }),
     {
       name: 'brainstorm:game',
       version: 1,
-      partialize: ({ xp, streak, bestStreak, discoveries, achievements, quests, home }) => ({
+      partialize: ({ xp, streak, bestStreak, discoveries, achievements, quests, home, compare }) => ({
         xp,
         streak,
         bestStreak,
@@ -111,6 +133,7 @@ export const useGame = create<GameState>()(
         achievements,
         quests,
         home,
+        compare,
       }),
     },
   ),
